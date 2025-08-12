@@ -1,20 +1,27 @@
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
       - ./backend/services/docker/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    command: redis-server /usr/local/etc/redis/redis.conf --save 60 1 --loglevel warning
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes --bind 0.0.0.0 --protected-mode no --maxmemory 8gb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
-    image: ghcr.io/suna-ai/suna-backend:latest
+    image: ghcr.io/kortix-ai/suna/suna-backend:latest
     platform: linux/amd64
     build:
       context: ./backend
@@ -23,6 +30,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/.env:/app/.env
+      - ./backend/logs:/app/logs
     env_file:
       - ./backend/.env
     environment:
@@ -30,14 +38,27 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
       - REDIS_SSL=False
+      - LOG_LEVEL=INFO
     depends_on:
       redis:
         condition: service_healthy
       worker:
         condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
-    image: ghcr.io/suna-ai/suna-backend:latest
+    image: ghcr.io/kortix-ai/suna/suna-backend:latest
     platform: linux/amd64
     build:
       context: ./backend
@@ -45,6 +66,7 @@ services:
     command: uv run dramatiq --skip-logging --processes 4 --threads 4 run_agent_background
     volumes:
       - ./backend/.env:/app/.env:ro
+      - ./backend/worker-logs:/app/logs
     env_file:
       - ./backend/.env
     environment:
@@ -52,9 +74,21 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
       - REDIS_SSL=False
+      - LOG_LEVEL=INFO
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "uv", "run", "worker_health.py"]
+      timeout: 20s
+      interval: 30s
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     init: true
