@@ -209,3 +209,43 @@ Kortix is licensed under the Apache License, Version 2.0. See [LICENSE](./LICENS
 [Get Started](./docs/SELF-HOSTING.md) • [Join Discord](https://discord.gg/Py6pCBUUPw) • [Follow on Twitter](https://x.com/kortixai)
 
 </div>
+
+1. Update docker
+2. Push DB schema to database
+2. Cretae new record
+3. Enable feature flag
+
+
+#feature flag
+Error fetching agents: Error: Custom agents is not enabled
+    at n (4273-4697f8edf1fb63a1.js:1:14329)
+#SQL
+-- Fix the missing personal account for user f94c3083-71ba-4fde-b90f-ca43a19cceba
+INSERT INTO basejump.accounts (
+    id, 
+    name, 
+    primary_owner_user_id, 
+    personal_account, 
+    created_at, 
+    updated_at
+) VALUES (
+    'f94c3083-71ba-4fde-b90f-ca43a19cceba',
+    'User_f94c3083',
+    'f94c3083-71ba-4fde-b90f-ca43a19cceba',
+    true,
+    NOW(),
+    NOW()
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Add the user to the account_user table
+INSERT INTO basejump.account_user (
+    account_id, 
+    user_id, 
+    account_role
+) VALUES (
+    'f94c3083-71ba-4fde-b90f-ca43a19cceba',
+    'f94c3083-71ba-4fde-b90f-ca43a19cceba',
+    'owner'
+)
+ON CONFLICT (account_id, user_id) DO NOTHING;
